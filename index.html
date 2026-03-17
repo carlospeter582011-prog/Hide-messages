@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShadowText v2 — Zero-Width Steganography</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --neon-cyan: #00fff5;
+    --neon-pink: #ff00a8;
+    --neon-purple: #bf00ff;
+    --neon-green: #00ff88;
+    --neon-yellow: #ffe600;
+    --bg-dark: #050510;
+    --bg-card: #0d0d25;
+    --border-dim: rgba(0,255,245,0.15);
+    --text-dim: rgba(0,255,245,0.5);
+    --glow-cyan: 0 0 8px #00fff5, 0 0 20px #00fff5, 0 0 40px rgba(0,255,245,0.4);
+    --glow-pink: 0 0 8px #ff00a8, 0 0 20px #ff00a8, 0 0 40px rgba(255,0,168,0.4);
+    --glow-green: 0 0 8px #00ff88, 0 0 20px #00ff88, 0 0 40px rgba(0,255,136,0.4);
+    --glow-yellow: 0 0 8px #ffe600, 0 0 20px #ffe600;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg-dark);
+    color: var(--neon-cyan);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,245,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,245,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridPulse 8s ease-in-out infinite alternate;
+    pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events: none; z-index: 0;
+  }
+  @keyframes gridPulse { 0% { opacity: 0.5; } 100% { opacity: 1; } }
+  .orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; animation: orbFloat 12s ease-in-out infinite alternate; }
+  .orb-1 { width: 400px; height: 400px; background: rgba(0,255,245,0.06); top: -100px; left: -100px; }
+  .orb-2 { width: 350px; height: 350px; background: rgba(255,0,168,0.06); bottom: -80px; right: -80px; animation-delay: -4s; }
+  .orb-3 { width: 250px; height: 250px; background: rgba(191,0,255,0.05); top: 50%; left: 50%; animation-delay: -8s; }
+  @keyframes orbFloat { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(30px,-30px) scale(1.1); } }
+
+  .wrapper { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  /* Header */
+  header { text-align: center; margin-bottom: 50px; position: relative; }
+  .sound-btn {
+    position: absolute; top: 0; right: 0;
+    background: rgba(0,255,245,0.05); border: 1px solid var(--border-dim);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer;
+    font-size: 16px; transition: all 0.2s; color: var(--neon-cyan);
+    line-height: 1;
+  }
+  .sound-btn:hover { border-color: rgba(0,255,245,0.5); box-shadow: 0 0 10px rgba(0,255,245,0.2); }
+  .sound-btn.muted { opacity: 0.4; }
+  .logo-line { font-size: 11px; letter-spacing: 8px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px; animation: fadeInDown 0.8s ease forwards; }
+  h1 {
+    font-family: 'Orbitron', sans-serif; font-size: clamp(2rem, 6vw, 3.8rem); font-weight: 900; line-height: 1;
+    background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-pink) 50%, var(--neon-purple) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,255,245,0.5));
+    animation: fadeInDown 0.8s ease 0.1s both; letter-spacing: 4px;
+  }
+  .tagline { margin-top: 14px; font-size: 12px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; animation: fadeInDown 0.8s ease 0.2s both; }
+  .divider { display: flex; align-items: center; gap: 16px; margin: 24px auto; max-width: 400px; animation: fadeInDown 0.8s ease 0.3s both; }
+  .divider-line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent); box-shadow: 0 0 8px var(--neon-cyan); }
+  .divider-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--neon-cyan); box-shadow: var(--glow-cyan); animation: blink 2s ease infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes fadeInDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 10px; letter-spacing: 2px; font-family: 'Orbitron', sans-serif; }
+  .badge-pink { background: rgba(255,0,168,0.1); border: 1px solid rgba(255,0,168,0.3); color: var(--neon-pink); }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+
+  /* Tabs */
+  .tabs { display: flex; border: 1px solid var(--border-dim); border-radius: 12px; overflow: hidden; margin-bottom: 30px; animation: fadeIn 0.8s ease 0.4s both; position: relative; }
+  .tab-slider { position: absolute; top: 0; bottom: 0; width: 50%; background: linear-gradient(135deg, rgba(0,255,245,0.1), rgba(255,0,168,0.1)); transition: left 0.4s cubic-bezier(0.4,0,0.2,1); border-radius: 10px; }
+  .tabs[data-active="decode"] .tab-slider { left: 50%; }
+  .tabs[data-active="encode"] .tab-slider { left: 0; }
+  .tab-btn { flex: 1; padding: 16px 20px; background: transparent; border: none; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); transition: color 0.3s, text-shadow 0.3s; position: relative; z-index: 1; }
+  .tab-btn.active { color: var(--neon-cyan); text-shadow: var(--glow-cyan); }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+  /* Cards */
+  .card { background: var(--bg-card); border: 1px solid var(--border-dim); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; animation: fadeIn 0.6s ease 0.5s both; display: none; }
+  .card.active { display: block; }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent); box-shadow: 0 0 10px var(--neon-cyan); }
+  .section-label { font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border-dim), transparent); }
+  .field-group { margin-bottom: 22px; }
+
+  /* Inputs */
+  textarea, input[type="text"], input[type="password"] {
+    width: 100%; background: rgba(0,255,245,0.03); border: 1px solid var(--border-dim);
+    border-radius: 10px; color: var(--neon-cyan); font-family: 'Share Tech Mono', monospace;
+    font-size: 14px; padding: 16px; resize: vertical; transition: border-color 0.3s, box-shadow 0.3s, background 0.3s; outline: none; line-height: 1.6;
+  }
+  textarea { min-height: 110px; }
+  textarea:focus, input:focus { border-color: rgba(0,255,245,0.5); box-shadow: 0 0 0 3px rgba(0,255,245,0.07), inset 0 0 20px rgba(0,255,245,0.03); background: rgba(0,255,245,0.05); }
+  textarea::placeholder, input::placeholder { color: rgba(0,255,245,0.2); }
+  input[type="password"] { min-height: unset; padding: 12px 16px; }
+
+  /* Options panel */
+  .options-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 10px; border: 1px solid var(--border-dim); }
+  .opt-label { font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+  .toggle-group { display: flex; align-items: center; gap: 10px; }
+  .toggle-wrap { display: flex; flex-direction: column; }
+  .toggle-switch { position: relative; width: 44px; height: 24px; cursor: pointer; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-track { position: absolute; inset: 0; background: rgba(0,255,245,0.08); border: 1px solid var(--border-dim); border-radius: 12px; transition: all 0.3s; }
+  .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; background: var(--text-dim); border-radius: 50%; transition: all 0.3s; }
+  .toggle-switch input:checked ~ .toggle-track { background: rgba(0,255,245,0.15); border-color: rgba(0,255,245,0.5); box-shadow: 0 0 10px rgba(0,255,245,0.2); }
+  .toggle-switch input:checked ~ .toggle-track .toggle-thumb { left: 23px; background: var(--neon-cyan); box-shadow: 0 0 8px var(--neon-cyan); }
+  .toggle-name { font-size: 12px; color: var(--neon-cyan); }
+  .opts-divider { width: 1px; height: 40px; background: var(--border-dim); }
+  .password-wrap { flex: 1; min-width: 200px; }
+  .password-wrap input { font-size: 13px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 15px 28px; border-radius: 10px; border: none; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; transition: all 0.2s; position: relative; overflow: hidden; }
+  .btn::before { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.1); opacity: 0; transition: opacity 0.2s; }
+  .btn:hover::before { opacity: 1; }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: linear-gradient(135deg, rgba(0,255,245,0.15), rgba(255,0,168,0.15)); color: var(--neon-cyan); border: 1px solid rgba(0,255,245,0.4); box-shadow: 0 0 20px rgba(0,255,245,0.15), inset 0 0 20px rgba(0,255,245,0.05); }
+  .btn-primary:hover { box-shadow: var(--glow-cyan), inset 0 0 20px rgba(0,255,245,0.1); border-color: var(--neon-cyan); }
+  .btn-pink { background: linear-gradient(135deg, rgba(255,0,168,0.15), rgba(191,0,255,0.15)); color: var(--neon-pink); border: 1px solid rgba(255,0,168,0.4); }
+  .btn-pink:hover { box-shadow: var(--glow-pink); border-color: var(--neon-pink); }
+  .btn-green { background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,255,245,0.15)); color: var(--neon-green); border: 1px solid rgba(0,255,136,0.4); }
+  .btn-green:hover { box-shadow: var(--glow-green); border-color: var(--neon-green); }
+  .btn-yellow { background: linear-gradient(135deg, rgba(255,230,0,0.1), rgba(0,255,245,0.1)); color: var(--neon-yellow); border: 1px solid rgba(255,230,0,0.35); }
+  .btn-yellow:hover { box-shadow: var(--glow-yellow); border-color: var(--neon-yellow); }
+  .btn-sm { padding: 10px 18px; font-size: 10px; }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Output boxes */
+  .output-box { background: rgba(0,0,0,0.4); border: 1px solid var(--border-dim); border-radius: 10px; padding: 18px; font-size: 14px; line-height: 1.7; min-height: 80px; word-break: break-all; transition: border-color 0.3s, box-shadow 0.3s; }
+  .output-box.glow-cyan { border-color: rgba(0,255,245,0.4); box-shadow: inset 0 0 30px rgba(0,255,245,0.04), 0 0 20px rgba(0,255,245,0.08); }
+  .output-box.glow-green { border-color: rgba(0,255,136,0.4); box-shadow: inset 0 0 30px rgba(0,255,136,0.04), 0 0 20px rgba(0,255,136,0.08); }
+  .output-placeholder { color: rgba(0,255,245,0.2); font-style: italic; }
+
+  /* Gauge */
+  .gauge-wrap { margin-top: 18px; display: none; }
+  .gauge-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .gauge-label { font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; }
+  .gauge-status { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+  .gauge-track { height: 8px; background: rgba(0,0,0,0.5); border-radius: 4px; border: 1px solid var(--border-dim); overflow: hidden; position: relative; }
+  .gauge-bar { height: 100%; border-radius: 4px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1), background 0.6s; }
+  .gauge-bar.safe { background: linear-gradient(90deg, #00ff88, #00fff5); box-shadow: 0 0 8px #00ff88; }
+  .gauge-bar.suspicious { background: linear-gradient(90deg, #ffe600, #ff8800); box-shadow: 0 0 8px #ffe600; }
+  .gauge-bar.critical { background: linear-gradient(90deg, #ff00a8, #ff0040); box-shadow: 0 0 8px #ff00a8; animation: gaugeFlash 0.8s ease infinite alternate; }
+  @keyframes gaugeFlash { 0%{opacity:1} 100%{opacity:0.5} }
+  .gauge-markers { display: flex; justify-content: space-between; margin-top: 4px; }
+  .gauge-marker { font-size: 9px; color: var(--text-dim); }
+
+  /* Stats bar */
+  .stats-bar { display: flex; gap: 24px; margin-top: 14px; flex-wrap: wrap; }
+  .stat { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
+  .stat-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--neon-cyan); box-shadow: var(--glow-cyan); }
+  .stat-val { font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: var(--neon-cyan); text-shadow: 0 0 10px var(--neon-cyan); }
+
+  /* Char map */
+  .char-map { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; padding: 14px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--border-dim); }
+  .char-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid; animation: chipIn 0.3s ease both; }
+  .chip-visible { background: rgba(0,255,245,0.08); border-color: rgba(0,255,245,0.3); color: var(--neon-cyan); }
+  .chip-hidden { background: rgba(255,0,168,0.08); border-color: rgba(255,0,168,0.3); color: var(--neon-pink); }
+  @keyframes chipIn { from{opacity:0;transform:scale(0.7)} to{opacity:1;transform:scale(1)} }
+
+  /* X-Ray view */
+  .xray-view {
+    display: none; margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,230,0,0.3); border-radius: 10px;
+    font-size: 13px; line-height: 2; word-break: break-all; max-height: 200px; overflow-y: auto;
+    box-shadow: inset 0 0 20px rgba(255,230,0,0.05);
+  }
+  .xray-visible { color: var(--neon-cyan); }
+  .xray-zw0 { color: rgba(255,0,168,0.6); font-size: 9px; vertical-align: super; }
+  .xray-zw1 { color: var(--neon-pink); font-size: 9px; vertical-align: super; text-shadow: 0 0 4px var(--neon-pink); }
+  .xray-zwd { color: rgba(0,255,245,0.3); font-size: 9px; vertical-align: super; }
+  .xray-zws { color: var(--neon-yellow); font-size: 10px; vertical-align: super; text-shadow: 0 0 6px var(--neon-yellow); }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--bg-card); border: 1px solid rgba(0,255,136,0.5); border-radius: 10px; padding: 14px 28px; font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--neon-green); box-shadow: var(--glow-green), 0 20px 60px rgba(0,0,0,0.5); z-index: 1000; transition: transform 0.4s cubic-bezier(0.4,0,0.2,1); pointer-events: none; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Matrix animation */
+  .matrix-char { display: inline; animation: matFlicker 0.1s ease; }
+  @keyframes matFlicker { 0%{opacity:0} 50%{opacity:1} 100%{opacity:1} }
+
+  /* Pulse & reveal */
+  @keyframes pulseRing { 0%{box-shadow:0 0 0 0 rgba(0,255,245,0.4)} 70%{box-shadow:0 0 0 12px rgba(0,255,245,0)} 100%{box-shadow:0 0 0 0 rgba(0,255,245,0)} }
+  .btn-primary.pulsing { animation: pulseRing 1s ease; }
+  @keyframes revealText { from{opacity:0;letter-spacing:8px} to{opacity:1;letter-spacing:normal} }
+  .reveal { animation: revealText 0.5s ease forwards; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+  ::-webkit-scrollbar-thumb { background: rgba(0,255,245,0.2); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="wrapper">
+  <header>
+    <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle sound">🔊</button>
+    <div class="logo-line">◈ Zero-Width Unicode Steganography v2 ◈</div>
+    <h1>SHADOWTEXT</h1>
+    <p class="tagline">Conceal messages within the invisible</p>
+    <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+    <span class="badge badge-pink"><span class="badge-dot"></span>UTF-8 · AES-256 · LZString · Scatter</span>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs" data-active="encode" id="tabBar">
+    <div class="tab-slider"></div>
+    <button class="tab-btn active" data-tab="encode" onclick="switchTab('encode')">⬡ Encode</button>
+    <button class="tab-btn" data-tab="decode" onclick="switchTab('decode')">⬡ Decode</button>
+  </div>
+
+  <!-- ═══════════ ENCODE CARD ═══════════ -->
+  <div class="card active" id="card-encode">
+    <div class="field-group">
+      <div class="section-label">Visible Text</div>
+      <textarea id="visibleText" placeholder="Enter the text that everyone will see..."></textarea>
+    </div>
+    <div class="field-group">
+      <div class="section-label">Secret Message</div>
+      <textarea id="hiddenText" placeholder="Enter your secret hidden message... (supports emoji 🌟, Arabic العربية, Chinese 中文)"></textarea>
+    </div>
+
+    <!-- Options -->
+    <div class="options-panel">
+      <div class="toggle-wrap">
+        <div class="opt-label">Scatter</div>
+        <div class="toggle-group">
+          <label class="toggle-switch">
+            <input type="checkbox" id="optScatter">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+          <span class="toggle-name">Scatter Mode</span>
+        </div>
+      </div>
+      <div class="toggle-wrap">
+        <div class="opt-label">Compress</div>
+        <div class="toggle-group">
+          <label class="toggle-switch">
+            <input type="checkbox" id="optCompress">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+          <span class="toggle-name">LZString</span>
+        </div>
+      </div>
+      <div class="opts-divider"></div>
+      <div class="password-wrap">
+        <div class="opt-label">AES-256 Password (optional)</div>
+        <input type="password" id="encodePassword" placeholder="Leave empty for no encryption...">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="encodeBtn" onclick="encode()">⬡ Encode Message</button>
+      <button class="btn btn-pink" onclick="clearEncode()">✕ Clear</button>
+    </div>
+
+    <!-- Output -->
+    <div style="margin-top:28px;">
+      <div class="section-label">Encoded Output</div>
+      <div class="output-box" id="encodeOutput">
+        <span class="output-placeholder">Your steganographic text will appear here...</span>
+      </div>
+
+      <!-- Suspicion Gauge -->
+      <div class="gauge-wrap" id="gaugeWrap">
+        <div class="gauge-header">
+          <span class="gauge-label">Suspicion Gauge · Hidden÷Visible Byte Ratio</span>
+          <span class="gauge-status" id="gaugeStatus">–</span>
+        </div>
+        <div class="gauge-track"><div class="gauge-bar" id="gaugeBar" style="width:0%"></div></div>
+        <div class="gauge-markers">
+          <span class="gauge-marker">SAFE</span>
+          <span class="gauge-marker">SUSPICIOUS</span>
+          <span class="gauge-marker">CRITICAL</span>
+        </div>
+      </div>
+
+      <div class="stats-bar" id="encodeStats" style="display:none;">
+        <div class="stat"><div class="stat-dot"></div>Visible: <span class="stat-val" id="statVisible">0</span></div>
+        <div class="stat"><div class="stat-dot" style="background:var(--neon-pink);box-shadow:var(--glow-pink)"></div>Hidden chars: <span class="stat-val" style="color:var(--neon-pink);text-shadow:0 0 10px var(--neon-pink)" id="statHidden">0</span></div>
+        <div class="stat"><div class="stat-dot" style="background:var(--neon-purple);box-shadow:0 0 10px var(--neon-purple)"></div>Output bytes: <span class="stat-val" style="color:var(--neon-purple);text-shadow:0 0 10px var(--neon-purple)" id="statBytes">0</span></div>
+      </div>
+
+      <div class="btn-row" id="encodeCopyRow" style="display:none;margin-top:14px;">
+        <button class="btn btn-green btn-sm" onclick="copyEncoded()">⬡ Copy</button>
+        <button class="btn btn-primary btn-sm" onclick="toggleCharMap()" id="charMapBtn">⬡ Char Map</button>
+      </div>
+      <div class="char-map" id="charMap" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ DECODE CARD ═══════════ -->
+  <div class="card" id="card-decode">
+    <div class="field-group">
+      <div class="section-label">Paste Encoded Text <span style="font-size:9px;margin-left:8px;color:var(--neon-green)">AUTO-DECODES ON PASTE</span></div>
+      <textarea id="encodedInput" placeholder="Paste text here — decoding starts automatically..." style="min-height:130px;"></textarea>
+    </div>
+
+    <div class="field-group" style="margin-bottom:16px;">
+      <div class="section-label">Password (if AES encrypted)</div>
+      <input type="password" id="decodePassword" placeholder="Enter password if message is encrypted...">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="decode()">⬡ Decode Message</button>
+      <button class="btn btn-yellow btn-sm" onclick="toggleXray()" id="xrayBtn">⬡ X-Ray</button>
+      <button class="btn btn-pink btn-sm" onclick="clearDecode()">✕ Clear</button>
+    </div>
+
+    <!-- X-Ray view -->
+    <div class="xray-view" id="xrayView"></div>
+
+    <div style="margin-top:22px;">
+      <div class="section-label">Visible Text</div>
+      <div class="output-box glow-cyan" id="decodeVisible"><span class="output-placeholder">Visible text extracted here...</span></div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="section-label">Extracted Secret Message</div>
+      <div class="output-box glow-green" id="decodeHidden"><span class="output-placeholder">Hidden message revealed here...</span></div>
+      <div class="stats-bar" id="decodeStats" style="display:none;margin-top:12px;">
+        <div class="stat"><div class="stat-dot"></div>Invisible chars: <span class="stat-val" id="statInvisible">0</span></div>
+        <div class="stat"><div class="stat-dot" style="background:var(--neon-green);box-shadow:var(--glow-green)"></div>Status: <span class="stat-val" style="color:var(--neon-green);text-shadow:var(--glow-green)" id="statStatus">–</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════ */
+const ZW0 = '\u200B'; // bit 0
+const ZW1 = '\u200C'; // bit 1
+const ZWD = '\u200D'; // byte delimiter
+const ZWS = '\uFEFF'; // start marker
+const ZW_SET = new Set([ZW0, ZW1, ZWD, ZWS]);
+
+const FLAG_COMPRESSED = 0x01;
+const FLAG_ENCRYPTED  = 0x02;
+
+/* ═══════════════════════════════════════════
+   AUDIO ENGINE
+═══════════════════════════════════════════ */
+let audioCtx = null;
+let soundEnabled = true;
+let lastTick = 0;
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTick() {
+  if (!soundEnabled) return;
+  const now = Date.now();
+  if (now - lastTick < 70) return;
+  lastTick = now;
+  try {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 600 + Math.random() * 400;
+    osc.type = 'square';
+    gain.gain.setValueAtTime(0.018, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.04);
+    osc.start(); osc.stop(ctx.currentTime + 0.04);
+  } catch(e) {}
+}
+
+function playEncode() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudio();
+    // Charge sweep
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(120, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.45);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    osc.start(); osc.stop(ctx.currentTime + 0.5);
+    // High ping
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.frequency.value = 1800; osc2.type = 'sine';
+    gain2.gain.setValueAtTime(0.06, ctx.currentTime + 0.42);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.7);
+    osc2.start(ctx.currentTime + 0.42); osc2.stop(ctx.currentTime + 0.7);
+  } catch(e) {}
+}
+
+function playDecodeSuccess() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudio();
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq; osc.type = 'sine';
+      const t = ctx.currentTime + i * 0.1;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.07, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      osc.start(t); osc.stop(t + 0.5);
+    });
+  } catch(e) {}
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('soundBtn');
+  btn.textContent = soundEnabled ? '🔊' : '🔇';
+  btn.classList.toggle('muted', !soundEnabled);
+}
+
+/* ═══════════════════════════════════════════
+   AES-256-GCM via Web Crypto
+═══════════════════════════════════════════ */
+async function deriveKey(password, salt) {
+  const enc = new TextEncoder();
+  const raw = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+
+async function aesEncrypt(text, password) {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(password, salt);
+  const ct   = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
+  const out  = new Uint8Array(16 + 12 + ct.byteLength);
+  out.set(salt, 0); out.set(iv, 16); out.set(new Uint8Array(ct), 28);
+  return out;
+}
+
+async function aesDecrypt(bytes, password) {
+  const salt = bytes.slice(0, 16);
+  const iv   = bytes.slice(16, 28);
+  const ct   = bytes.slice(28);
+  const key  = await deriveKey(password, salt);
+  const pt   = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
+/* ═══════════════════════════════════════════
+   BYTE ↔ ZERO-WIDTH ENCODING
+═══════════════════════════════════════════ */
+function bytesToZW(bytes) {
+  let zw = ZWS;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    for (let bit = 7; bit >= 0; bit--) {
+      zw += (b >> bit) & 1 ? ZW1 : ZW0;
+    }
+    if (i < bytes.length - 1) zw += ZWD;
+  }
+  return zw;
+}
+
+function zwToBytes(zw) {
+  if (!zw.startsWith(ZWS)) return null;
+  const groups = zw.slice(1).split(ZWD);
+  const bytes = new Uint8Array(groups.length);
+  for (let i = 0; i < groups.length; i++) {
+    let byte = 0, bit = 7;
+    for (const ch of groups[i]) {
+      if (ch === ZW1) { byte |= (1 << bit); }
+      bit--;
+    }
+    bytes[i] = byte;
+  }
+  return bytes;
+}
+
+/* Inject ZW payload into visible text (normal or scattered) */
+function injectZW(visible, zwPayload, scatter) {
+  if (!visible) return zwPayload;
+  if (!scatter) return visible[0] + zwPayload + visible.slice(1);
+
+  const zwChars = [...zwPayload];
+  const visChars = [...visible];
+  const N = visChars.length, P = zwChars.length;
+  let result = '', zwIdx = 0;
+  for (let i = 0; i < N; i++) {
+    const target = Math.round((i / N) * P);
+    while (zwIdx < target && zwIdx < P) result += zwChars[zwIdx++];
+    result += visChars[i];
+  }
+  while (zwIdx < P) result += zwChars[zwIdx++];
+  return result;
+}
+
+/* ═══════════════════════════════════════════
+   HIGH-LEVEL ENCODE / DECODE
+═══════════════════════════════════════════ */
+async function encodeMessage(visible, hidden, password, useCompress, useScatter) {
+  let flags = 0;
+  let text = hidden;
+
+  if (useCompress) {
+    text = LZString.compressToUTF16(text);
+    flags |= FLAG_COMPRESSED;
+  }
+
+  let dataBytes;
+  if (password) {
+    dataBytes = await aesEncrypt(text, password);
+    flags |= FLAG_ENCRYPTED;
+  } else {
+    dataBytes = new TextEncoder().encode(text);
+  }
+
+  const payload = new Uint8Array(1 + dataBytes.length);
+  payload[0] = flags;
+  payload.set(dataBytes, 1);
+
+  const zwPayload = bytesToZW(payload);
+  return injectZW(visible, zwPayload, useScatter);
+}
+
+async function decodeMessage(encoded, password) {
+  let visibleOnly = '', zwOnly = '';
+  for (const ch of encoded) {
+    if (ZW_SET.has(ch)) zwOnly += ch;
+    else visibleOnly += ch;
+  }
+
+  const invisCount = [...encoded].filter(c => ZW_SET.has(c)).length;
+
+  const bytes = zwToBytes(zwOnly);
+  if (!bytes || bytes.length === 0) {
+    return { visible: visibleOnly, hidden: null, error: null, count: 0, isEncrypted: false, isCompressed: false };
+  }
+
+  const flags = bytes[0];
+  const dataBytes = bytes.slice(1);
+  const isCompressed = !!(flags & FLAG_COMPRESSED);
+  const isEncrypted  = !!(flags & FLAG_ENCRYPTED);
+
+  try {
+    let hidden;
+    if (isEncrypted) {
+      if (!password) return { visible: visibleOnly, hidden: null, error: 'PASSWORD_REQUIRED', count: invisCount, isEncrypted, isCompressed };
+      const decrypted = await aesDecrypt(dataBytes, password);
+      hidden = isCompressed ? LZString.decompressFromUTF16(decrypted) : decrypted;
+    } else {
+      const text = new TextDecoder().decode(dataBytes);
+      hidden = isCompressed ? LZString.decompressFromUTF16(text) : text;
+    }
+    return { visible: visibleOnly, hidden, error: null, count: invisCount, isEncrypted, isCompressed };
+  } catch(e) {
+    return { visible: visibleOnly, hidden: null, error: isEncrypted ? 'WRONG_PASSWORD' : 'DECODE_ERROR', count: invisCount, isEncrypted, isCompressed };
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MATRIX REVEAL ANIMATION
+═══════════════════════════════════════════ */
+const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ01█▓▒░■□';
+
+async function matrixReveal(element, finalText, color) {
+  element.style.color = color || 'var(--neon-green)';
+  element.style.textShadow = color ? '' : 'var(--glow-green)';
+  const display = finalText.length > 300 ? finalText.slice(0, 300) + '…' : finalText;
+  const steps = 22, delay = 900 / steps;
+
+  for (let step = 0; step <= steps; step++) {
+    await new Promise(r => setTimeout(r, delay));
+    const prog = step / steps;
+    let out = '';
+    for (let i = 0; i < display.length; i++) {
+      if (i / display.length < prog - 0.05 || Math.random() < prog * prog) {
+        out += display[i];
+      } else {
+        out += MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+      }
+    }
+    element.textContent = out;
+  }
+  element.textContent = finalText;
+}
+
+/* ═══════════════════════════════════════════
+   SUSPICION GAUGE
+═══════════════════════════════════════════ */
+function updateGauge(hiddenBytes, visibleBytes) {
+  const gaugeWrap = document.getElementById('gaugeWrap');
+  const gaugeBar  = document.getElementById('gaugeBar');
+  const gaugeStatus = document.getElementById('gaugeStatus');
+  gaugeWrap.style.display = 'block';
+
+  const ratio = hiddenBytes / Math.max(1, visibleBytes);
+  const pct   = Math.min(100, (ratio / 5) * 100);
+  gaugeBar.style.width = pct + '%';
+
+  if (ratio <= 1) {
+    gaugeBar.className = 'gauge-bar safe';
+    gaugeStatus.textContent = 'SAFE';
+    gaugeStatus.style.color = 'var(--neon-green)';
+    gaugeStatus.style.textShadow = 'var(--glow-green)';
+  } else if (ratio <= 3) {
+    gaugeBar.className = 'gauge-bar suspicious';
+    gaugeStatus.textContent = 'SUSPICIOUS';
+    gaugeStatus.style.color = 'var(--neon-yellow)';
+    gaugeStatus.style.textShadow = 'var(--glow-yellow)';
+  } else {
+    gaugeBar.className = 'gauge-bar critical';
+    gaugeStatus.textContent = 'CRITICAL';
+    gaugeStatus.style.color = 'var(--neon-pink)';
+    gaugeStatus.style.textShadow = 'var(--glow-pink)';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   X-RAY VIEW
+═══════════════════════════════════════════ */
+let xrayOpen = false;
+function toggleXray() {
+  const view = document.getElementById('xrayView');
+  const btn  = document.getElementById('xrayBtn');
+  xrayOpen = !xrayOpen;
+  if (!xrayOpen) {
+    view.style.display = 'none';
+    btn.textContent = '⬡ X-Ray';
+    return;
+  }
+  const input = document.getElementById('encodedInput').value;
+  if (!input) { showToast('⚠ No text to X-Ray', 'pink'); xrayOpen = false; return; }
+  buildXray(input);
+  view.style.display = 'block';
+  btn.textContent = '⬡ Close X-Ray';
+}
+
+function buildXray(text) {
+  const view = document.getElementById('xrayView');
+  view.innerHTML = '';
+  let count0 = 0, count1 = 0;
+  for (const ch of text) {
+    const sp = document.createElement('span');
+    if (ch === ZWS)      { sp.className = 'xray-zws'; sp.textContent = '★'; }
+    else if (ch === ZW0) { sp.className = 'xray-zw0'; sp.textContent = '0'; count0++; }
+    else if (ch === ZW1) { sp.className = 'xray-zw1'; sp.textContent = '1'; count1++; }
+    else if (ch === ZWD) { sp.className = 'xray-zwd'; sp.textContent = '|'; }
+    else                 { sp.className = 'xray-visible'; sp.textContent = ch; }
+    view.appendChild(sp);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   CHAR MAP
+═══════════════════════════════════════════ */
+function toggleCharMap() {
+  const mapEl  = document.getElementById('charMap');
+  const btn    = document.getElementById('charMapBtn');
+  if (mapEl.style.display === 'flex') {
+    mapEl.style.display = 'none';
+    btn.textContent = '⬡ Char Map';
+    return;
+  }
+  const hidden  = document.getElementById('hiddenText').value;
+  const visible = document.getElementById('visibleText').value;
+  mapEl.innerHTML = '';
+  mapEl.style.display = 'flex';
+  btn.textContent = '⬡ Hide Map';
+
+  const displayVisible = [...(visible || '')].slice(0, 14);
+  displayVisible.forEach(ch => {
+    const chip = document.createElement('span');
+    chip.className = 'char-chip chip-visible';
+    chip.innerHTML = `<span>${ch === ' ' ? '·' : ch}</span> <span style="opacity:.5;font-size:9px">U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')}</span>`;
+    mapEl.appendChild(chip);
+  });
+
+  const sep = document.createElement('div');
+  sep.style.cssText = 'width:100%;height:1px;background:var(--border-dim);margin:4px 0;';
+  mapEl.appendChild(sep);
+
+  [['★','MARKER','FEFF'], ['0','0 BIT','200B'], ['1','1 BIT','200C'], ['|','DELIM','200D']].forEach(([sym,name,code]) => {
+    const chip = document.createElement('span');
+    chip.className = 'char-chip chip-hidden';
+    chip.innerHTML = `<span>${sym}</span> <span style="font-size:9px">${name} U+${code}</span>`;
+    mapEl.appendChild(chip);
+  });
+}
+
+/* ═══════════════════════════════════════════
+   COPY
+═══════════════════════════════════════════ */
+let lastEncoded = '';
+
+function copyEncoded() {
+  if (!lastEncoded) { showToast('⚠ Nothing to copy', 'pink'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lastEncoded)
+      .then(() => showToast('✓ Copied to clipboard'))
+      .catch(() => fallbackCopy(lastEncoded));
+  } else {
+    fallbackCopy(lastEncoded);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✓ Copied to clipboard');
+  } catch {
+    showToast('⚠ Copy failed — select manually', 'pink');
+  }
+  document.body.removeChild(ta);
+}
+
+/* ═══════════════════════════════════════════
+   MAIN ENCODE
+═══════════════════════════════════════════ */
+async function encode() {
+  const visible  = document.getElementById('visibleText').value;
+  const hidden   = document.getElementById('hiddenText').value;
+  const password = document.getElementById('encodePassword').value;
+  const compress = document.getElementById('optCompress').checked;
+  const scatter  = document.getElementById('optScatter').checked;
+
+  if (!visible.trim() && !hidden.trim()) { showToast('⚠ Enter some text first', 'pink'); return; }
+  if (!hidden.trim()) { showToast('⚠ Enter a secret message', 'pink'); return; }
+
+  const btn = document.getElementById('encodeBtn');
+  btn.textContent = '⬡ Encoding...';
+  btn.style.opacity = '0.7';
+
+  try {
+    const encoded = await encodeMessage(visible, hidden, password, compress, scatter);
+    lastEncoded = encoded;
+
+    const output = document.getElementById('encodeOutput');
+    output.innerHTML = '';
+    output.className = 'output-box glow-cyan';
+    const span = document.createElement('span');
+    span.textContent = encoded;
+    span.className = 'reveal';
+    output.appendChild(span);
+
+    // Stats
+    const hiddenBytes  = new TextEncoder().encode(hidden).length;
+    const visibleBytes = new TextEncoder().encode(visible || ' ').length;
+    document.getElementById('statVisible').textContent = [...visible].length;
+    document.getElementById('statHidden').textContent  = [...hidden].length;
+    document.getElementById('statBytes').textContent   = new TextEncoder().encode(encoded).length;
+    document.getElementById('encodeStats').style.display    = 'flex';
+    document.getElementById('encodeCopyRow').style.display  = 'flex';
+
+    updateGauge(hiddenBytes, visibleBytes);
+    playEncode();
+    btn.classList.add('pulsing');
+    setTimeout(() => btn.classList.remove('pulsing'), 1000);
+    showToast(password ? '✓ Encoded + AES-256 Encrypted' : '✓ Message encoded successfully');
+  } catch(e) {
+    showToast('⚠ ' + (e.message || 'Encoding failed'), 'pink');
+  } finally {
+    btn.textContent = '⬡ Encode Message';
+    btn.style.opacity = '1';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MAIN DECODE
+═══════════════════════════════════════════ */
+async function decode() {
+  const input    = document.getElementById('encodedInput').value;
+  const password = document.getElementById('decodePassword').value;
+  if (!input) { showToast('⚠ Paste some text to decode', 'pink'); return; }
+
+  const decVisEl = document.getElementById('decodeVisible');
+  const decHidEl = document.getElementById('decodeHidden');
+  decHidEl.textContent = '';
+
+  try {
+    const result = await decodeMessage(input, password);
+
+    // Visible text
+    decVisEl.innerHTML = '';
+    if (result.visible) {
+      const span = document.createElement('span');
+      span.textContent = result.visible;
+      span.className = 'reveal';
+      decVisEl.appendChild(span);
+    } else {
+      decVisEl.innerHTML = '<span class="output-placeholder">No visible text found</span>';
+    }
+
+    // Hidden message
+    if (result.error === 'PASSWORD_REQUIRED') {
+      decHidEl.innerHTML = '<span style="color:var(--neon-yellow)">🔒 This message is AES encrypted — enter password above and decode again</span>';
+      document.getElementById('statStatus').textContent = 'LOCKED';
+      document.getElementById('statStatus').style.color = 'var(--neon-yellow)';
+    } else if (result.error === 'WRONG_PASSWORD') {
+      decHidEl.innerHTML = '<span style="color:var(--neon-pink)">⚠ Wrong password — decryption failed</span>';
+      document.getElementById('statStatus').textContent = 'WRONG KEY';
+      document.getElementById('statStatus').style.color = 'var(--neon-pink)';
+    } else if (result.error) {
+      decHidEl.innerHTML = '<span style="color:var(--neon-pink)">⚠ Could not decode this message</span>';
+      document.getElementById('statStatus').textContent = 'ERROR';
+    } else if (result.hidden) {
+      await matrixReveal(decHidEl, result.hidden, 'var(--neon-green)');
+      let status = 'FOUND';
+      if (result.isEncrypted)  status += ' · 🔓 AES';
+      if (result.isCompressed) status += ' · 📦 LZ';
+      document.getElementById('statStatus').textContent = status;
+      document.getElementById('statStatus').style.color = 'var(--neon-green)';
+      document.getElementById('statStatus').style.textShadow = 'var(--glow-green)';
+      playDecodeSuccess();
+    } else if (result.count > 0) {
+      decHidEl.innerHTML = '<span style="color:var(--neon-pink)">⚠ Invisible chars found but could not decode (different encoder?)</span>';
+      document.getElementById('statStatus').textContent = 'PARTIAL';
+    } else {
+      decHidEl.innerHTML = '<span class="output-placeholder">No hidden message found</span>';
+      document.getElementById('statStatus').textContent = 'CLEAN';
+      document.getElementById('statStatus').style.color = 'var(--neon-cyan)';
+    }
+
+    document.getElementById('statInvisible').textContent = result.count;
+    document.getElementById('decodeStats').style.display = 'flex';
+
+    if (!result.error && result.hidden) showToast('✓ Hidden message revealed!');
+  } catch(e) {
+    showToast('⚠ Decode error: ' + e.message, 'pink');
+  }
+}
+
+/* ═══════════════════════════════════════════
+   CLEAR
+═══════════════════════════════════════════ */
+function clearEncode() {
+  lastEncoded = '';
+  ['visibleText','hiddenText','encodePassword'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('encodeOutput').innerHTML = '<span class="output-placeholder">Your steganographic text will appear here...</span>';
+  document.getElementById('encodeOutput').className = 'output-box';
+  document.getElementById('encodeStats').style.display   = 'none';
+  document.getElementById('encodeCopyRow').style.display = 'none';
+  document.getElementById('charMap').style.display       = 'none';
+  document.getElementById('gaugeWrap').style.display     = 'none';
+  document.getElementById('charMapBtn').textContent = '⬡ Char Map';
+}
+
+function clearDecode() {
+  ['encodedInput','decodePassword'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('decodeVisible').innerHTML = '<span class="output-placeholder">Visible text extracted here...</span>';
+  document.getElementById('decodeHidden').innerHTML  = '<span class="output-placeholder">Hidden message revealed here...</span>';
+  document.getElementById('decodeStats').style.display = 'none';
+  document.getElementById('xrayView').style.display   = 'none';
+  document.getElementById('xrayView').innerHTML = '';
+  document.getElementById('xrayBtn').textContent = '⬡ X-Ray';
+  xrayOpen = false;
+}
+
+/* ═══════════════════════════════════════════
+   TAB SWITCHING
+═══════════════════════════════════════════ */
+function switchTab(tab) {
+  document.getElementById('tabBar').dataset.active = tab;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+  document.querySelectorAll('.card').forEach(card => card.classList.toggle('active', card.id === `card-${tab}`));
+}
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+let toastTimeout;
+function showToast(msg, type = 'green') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  const isPink = type === 'pink';
+  toast.style.borderColor = isPink ? 'rgba(255,0,168,0.5)' : 'rgba(0,255,136,0.5)';
+  toast.style.color       = isPink ? 'var(--neon-pink)'    : 'var(--neon-green)';
+  toast.style.boxShadow   = isPink ? 'var(--glow-pink), 0 20px 60px rgba(0,0,0,.5)' : 'var(--glow-green), 0 20px 60px rgba(0,0,0,.5)';
+  toast.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+
+/* ═══════════════════════════════════════════
+   EVENT LISTENERS
+═══════════════════════════════════════════ */
+// Auto-decode on paste
+document.getElementById('encodedInput').addEventListener('paste', () => {
+  setTimeout(() => decode(), 80);
+});
+
+// Typing tick on all inputs/textareas
+document.querySelectorAll('textarea, input').forEach(el => {
+  el.addEventListener('keydown', () => playTick());
+});
+
+// Ctrl+Enter shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    const active = document.querySelector('.card.active').id;
+    if (active === 'card-encode') encode();
+    else decode();
+  }
+});
+</script>
+</body>
+</html>
